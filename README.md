@@ -7,7 +7,7 @@ A minimal, opinionated script to manage restic back-ups on a Backblaze B2 bucket
 Download the script as follows:
 
 ```bash
-curl -o b2restic https://raw.githubusercontent.com/daberg/b2restic/main/b2restic
+curl -o b2restic https://raw.githubusercontent.com/daberg/b2restic/refs/heads/master/b2restic
 chmod +x b2restic
 ```
 
@@ -28,7 +28,7 @@ Which can be passed directly or written to a `.env` file in the same folder as t
 The `template.env` file can be used to conveniently create the `.env` file:
 
 ```bash
-curl -o .env https://raw.githubusercontent.com/daberg/b2restic/main/template.env
+curl -o .env https://raw.githubusercontent.com/daberg/b2restic/refs/heads/master/template.env
 chmod 400 .env
 vim .env
 ```

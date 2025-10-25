@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command -v restic >/dev/null 2>&1 || { echo "Error: restic is not installed or not in PATH" >&2; exit 1; }
+
+[ -f ".env" ] && source ".env"
+
+required_vars=(B2_APPLICATION_KEY_ID B2_APPLICATION_KEY_SECRET B2_BUCKET_NAME B2_BUCKET_REGION RESTIC_SECRET)
+for var in "${required_vars[@]}"; do
+  if [ -z "${!var:-}" ]; then
+    echo "Error: $var is not set" >&2
+    exit 1
+  fi
+done
+
+log() { echo "$(date +'%Y-%m-%d %H:%M:%S') - $1"; }
+
+usage() {
+  cat <<'EOF'
+Usage: b2restic <command> [arguments]
+
+Commands:
+  init                   Initialize the Restic repository
+  backup <DIR>           Backup the specified directory
+  list                   List all snapshots
+  mount <MOUNTDIR>       Mount the repository to a directory
+  help                   Show this help message
+
+Environment variables required:
+  B2_APPLICATION_KEY_ID       Your Backblaze B2 S3 Key ID
+  B2_APPLICATION_KEY_SECRET   Your Backblaze B2 S3 Key Secret
+  B2_BUCKET_NAME              Your Backblaze B2 bucket name
+  B2_BUCKET_REGION            Your Backblaze B2 bucket region (e.g., us-west-000)
+  RESTIC_SECRET               Your Restic password
+
+Examples:
+  b2restic init
+  b2restic backup /home/user/data
+  b2restic list
+  b2restic mount /mnt/restic
+EOF
+}
+
+init() {
+  log "Initializing Restic repository..."
+  restic init
+}
+
+backup() {
+  local source_dir="$1"
+  if [ ! -d "$source_dir" ]; then
+    echo "Error: $source_dir is not a valid directory" >&2
+    exit 1
+  fi
+  log "Starting backup of $source_dir..."
+  restic backup "$source_dir" --verbose 2
+  log "Pruning old snapshots..."
+  restic forget --keep-weekly 4 --keep-monthly 6 --prune
+  log "Backup complete."
+}
+
+list_snapshots() {
+  log "Listing snapshots..."
+  restic snapshots
+}
+
+mount_repo() {
+  local mount_point="$1"
+  [ ! -d "$mount_point" ] && mkdir -p "$mount_point"
+  log "Mounting repository at $mount_point..."
+  restic mount "$mount_point"
+}
+
+if [ $# -lt 1 ]; then
+  usage
+  exit 1
+fi
+
+COMMAND="$1"
+shift
+
+export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY_SECRET"
+export RESTIC_PASSWORD="$RESTIC_SECRET"
+export RESTIC_REPOSITORY="s3:https://s3.${B2_BUCKET_REGION}.backblazeb2.com/${B2_BUCKET_NAME}"
+
+case "$COMMAND" in
+  init)
+    init
+    ;;
+  backup)
+    [ $# -lt 1 ] && { echo "Error: missing directory to back up" >&2; usage; exit 1; }
+    backup "$1"
+    ;;
+  list)
+    list_snapshots
+    ;;
+  mount)
+    [ $# -lt 1 ] && { echo "Error: missing mount directory" >&2; usage; exit 1; }
+    mount_repo "$1"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    usage
+    exit 1
+    ;;
+esac
